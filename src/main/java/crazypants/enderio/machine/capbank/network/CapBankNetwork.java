@@ -224,11 +224,11 @@ public class CapBankNetwork implements ICapBankNetwork {
     if(energyStored != prevEnergyStored) {
       distributeEnergyToBanks();
     }
-    powerTrackerIn.tick(energyReceived);
-    powerTrackerOut.tick(energySend);
+    powerTrackerIn.tick(getMaxInput() - energyReceived);
+    powerTrackerOut.tick(getMaxOutput() - energySend);
     prevEnergyStored = energyStored;
-    energyReceived = 0;
-    energySend = 0;
+    energyReceived = getMaxInput();
+    energySend = getMaxOutput();
 
     if(firstUpate) {
       if(!capBanks.isEmpty()) {
@@ -361,7 +361,7 @@ public class CapBankNetwork implements ICapBankNetwork {
       return 0;
     }
 
-    long spaceAvailable = maxEnergyStored - energyStored;
+    long spaceAvailable = Math.min(maxEnergyStored - energyStored, energyReceived);
     if(spaceAvailable > Integer.MAX_VALUE) {
       spaceAvailable = Integer.MAX_VALUE;
     }
@@ -373,12 +373,30 @@ public class CapBankNetwork implements ICapBankNetwork {
     return res;
   }
 
-  @Override
+    @Override
+    public int extractEnergy(int maxExtract, boolean simulate)
+    {
+      if(maxExtract <= 0 || !outputRedstoneConditionMet) {
+        return 0;
+      }
+      long powerAvailable = Math.min(energyStored, energySend);
+      if(powerAvailable > Integer.MAX_VALUE) {
+        powerAvailable = Integer.MAX_VALUE;
+      }
+      int res = Math.min(maxExtract, (int)powerAvailable);
+      res = Math.min(res, getMaxOutput());
+      if (!simulate){
+        addEnergy(-res);
+      }
+      return res;
+    }
+
+    @Override
   public void addEnergy(int energy) {
     if(energy > 0) {
-      energyReceived += energy;
+      energyReceived -= energy;
     } else {
-      energySend -= energy;
+      energySend += energy;
     }
     if(!type.isCreative()) {
       energyStored += energy;

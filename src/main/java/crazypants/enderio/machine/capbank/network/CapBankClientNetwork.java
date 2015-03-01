@@ -230,7 +230,13 @@ public class CapBankClientNetwork implements ICapBankNetwork {
     return 0;
   }
 
-  @Override
+    @Override
+    public int extractEnergy(int maxExtract, boolean simulate)
+    {
+        return 0;
+    }
+
+    @Override
   public void removeReceptors(Collection<EnergyReceptor> receptors) {
   }
 

@@ -682,7 +682,14 @@ public class TileCapBank extends TileEntityEio implements IInternalPowerHandler,
 
   @Override
   public int extractEnergy(ForgeDirection from, int maxExtract, boolean simulate) {
-    return 0;
+    if (network==null) {
+      return 0;
+    }
+    IoMode mode = getIoMode(from);
+    if(mode == IoMode.DISABLED || mode == IoMode.PULL) {
+      return 0;
+    }
+    return network.extractEnergy(maxExtract, simulate);
   }
 
   @Override

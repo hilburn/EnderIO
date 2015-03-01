@@ -33,6 +33,8 @@ public interface ICapBankNetwork extends IPowerStorage {
 
   int receiveEnergy(int maxReceive, boolean simulate);
 
+  int extractEnergy(int maxExtract, boolean simulate);
+
   @Override
   long getMaxEnergyStoredL();
 
