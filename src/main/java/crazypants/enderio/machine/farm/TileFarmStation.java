@@ -1,7 +1,6 @@
 package crazypants.enderio.machine.farm;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.BitSet;
 
 import net.minecraft.block.Block;
 import net.minecraft.enchantment.Enchantment;
@@ -10,8 +9,7 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.init.Blocks;
-import net.minecraft.item.ItemAxe;
-import net.minecraft.item.ItemHoe;
+import net.minecraft.item.ItemShears;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.server.MinecraftServer;
@@ -38,7 +36,8 @@ import crazypants.util.Lang;
 public class TileFarmStation extends AbstractPoweredTaskEntity {
 
   public enum ToolType {
-    HOE { 
+    HOE {
+      @Override
       boolean match(ItemStack item) {
         for (ItemStack stack : Config.farmHoes) {
           if (stack.getItem() == item.getItem()) {
@@ -48,10 +47,14 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
         return false;
       }
     },
-    
-    AXE     { boolean match(ItemStack item) { return item.getItem().getHarvestLevel(item, "axe") >= 0;         }},
-    TREETAP { boolean match(ItemStack item) { return item.getItem().getClass() == RubberTreeFarmerIC2.treeTap;}};
-    
+
+    AXE     { @Override
+    boolean match(ItemStack item) { return item.getItem().getHarvestLevel(item, "axe") >= 0;         }},
+    TREETAP { @Override
+    boolean match(ItemStack item) { return item.getItem().getClass() == RubberTreeFarmerIC2.treeTap; }},
+    SHEARS  { @Override
+    boolean match(ItemStack item) { return item.getItem() instanceof ItemShears; }};
+
     public final boolean itemMatches(ItemStack item) {
       if (item == null) {
         return false;
@@ -80,23 +83,21 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
       return false;
     }
   }
-  
+
   public static final String NOTIFICATION_NO_HOE = "noHoe";
   public static final String NOTIFICATION_NO_AXE = "noAxe";
   public static final String NOTIFICATION_NO_SEEDS = "noSeeds";
-  
+
   private BlockCoord lastScanned;
   private EntityPlayerMP farmerJoe;
 
-  private int farmSize = Config.farmDefaultSize;
+  private static final int minToolSlot = 0;
+  private static final int maxToolSlot = 2;
 
-  private int minToolSlot = 0;
-  private int maxToolSlot = 1;
+  public static final int minSupSlot = maxToolSlot + 1;
+  public static final int maxSupSlot = minSupSlot + 4;
 
-  int minSupSlot = maxToolSlot + 1;
-  int maxSupSlot = minSupSlot + 4;
-  
-  List<Integer> lockedSlots = new ArrayList<Integer>();
+  private final BitSet lockedSlots = new BitSet();
 
   private final int upgradeBonusSize = 2;
 
@@ -108,12 +109,12 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
   public boolean sendNotification = false;
 
   public TileFarmStation() {
-    super(new SlotDefinition(6, 4, 1));
-    setCapacitor(Capacitors.BASIC_CAPACITOR);    
+    super(new SlotDefinition(7, 4, 1));
+    setCapacitor(Capacitors.BASIC_CAPACITOR);
   }
 
   public int getFarmSize() {
-    return farmSize + getUpgradeDist();
+    return Config.farmDefaultSize + getUpgradeDist();
   }
 
   public void actionPerformed(boolean isAxe) {
@@ -175,6 +176,10 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
     return hasTool(ToolType.AXE);
   }
 
+  public boolean hasShears() {
+    return hasTool(ToolType.SHEARS);
+  }
+
   public int getAxeLootingValue() {
     ItemStack tool = getTool(ToolType.AXE);
     if(tool == null) {
@@ -189,6 +194,10 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
 
   public void damageHoe(int i, BlockCoord bc) {
     damageTool(ToolType.HOE, null, bc, i);
+  }
+
+  public void damageShears(Block blk, BlockCoord bc) {
+    damageTool(ToolType.SHEARS, blk, bc, 1);
   }
 
   public boolean hasTool(ToolType type){
@@ -206,24 +215,25 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
 
   public void damageTool(ToolType type, Block blk, BlockCoord bc, int damage) {
 
+    ItemStack tool = getTool(type);
+    if(tool == null) {
+      return;
+    }
+
     float rand = worldObj.rand.nextFloat();
     if(rand >= Config.farmToolTakeDamageChance) {
       return;
     }
 
-    ItemStack tool = getTool(type);
-    if(tool == null) {
-      return;
-    }
     boolean canDamage = canDamage(tool);
-    if(type == ToolType.AXE) {            
-      tool.getItem().onBlockDestroyed(tool, worldObj, blk, bc.x, bc.y, bc.z, farmerJoe);      
+    if(type == ToolType.AXE) {
+      tool.getItem().onBlockDestroyed(tool, worldObj, blk, bc.x, bc.y, bc.z, farmerJoe);
     } else if(type == ToolType.HOE) {
       int origDamage = tool.getItemDamage();
       tool.getItem().onItemUse(tool, farmerJoe, worldObj, bc.x, bc.y, bc.z, 1, 0.5f, 0.5f, 0.5f);
       if(origDamage == tool.getItemDamage() && canDamage) {
         tool.damageItem(1, farmerJoe);
-      }      
+      }
     } else if(canDamage) {
       tool.damageItem(1, farmerJoe);
     }
@@ -232,9 +242,9 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
       destroyTool(type);
     }
   }
-  
+
   private boolean canDamage(ItemStack stack) {
-    return stack != null && stack.isItemStackDamageable() && stack.getItem().isDamageable();  
+    return stack != null && stack.isItemStackDamageable() && stack.getItem().isDamageable();
   }
 
   private void destroyTool(ToolType type) {
@@ -274,7 +284,7 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
     return block.isAir(worldObj, bc.x, bc.y, bc.z) || block.isReplaceable(worldObj, bc.x, bc.y, bc.z);
   }
 
-  public void setNotification(String unloc) {        
+  public void setNotification(String unloc) {
     String newNote = Lang.localize("farm.note." + unloc);
     if(!newNote.equals(notification)) {
       notification = newNote;
@@ -292,7 +302,7 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
   public boolean hasNotification() {
     return !"".equals(notification);
   }
-  
+
   private void sendNotification() {
     PacketHandler.INSTANCE.sendToAll(new PacketUpdateNotification(this, notification));
   }
@@ -303,7 +313,7 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
       return false;
     }
     if(i <= maxToolSlot) {
-        if (ToolType.isTool(stack)) {          
+        if (ToolType.isTool(stack)) {
           int otherSlot = i == minToolSlot ? maxToolSlot : minToolSlot;
           if (inventory[otherSlot] == null) {
             return true;
@@ -328,23 +338,23 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
     }
     return false;
   }
-  
+
   protected boolean canTick(boolean redstoneChecksPassed) {
     if(worldObj.getTotalWorldTime() % 2 != 0) {
       return false;
-    }    
+    }
     if(getEnergyStored() < getPowerUsePerTick()) {
       setNotification("noPower");
       return false;
-    }    
+    }
     if(redstoneChecksPassed) {
       usePower();
-    }   
+    }
     int curScaled = getProgressScaled(16);
     if(curScaled != lastProgressScaled) {
       sendTaskProgressPacket();
       lastProgressScaled = curScaled;
-    }    
+    }
     return true;
   }
 
@@ -353,8 +363,8 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
     if (sendNotification && worldObj.getTotalWorldTime() % 20 == 0) {
       sendNotification = false;
       sendNotification();
-    }       
-    
+    }
+
     if(!hasPower() && Config.farmActionEnergyUseRF > 0 && Config.farmAxeActionEnergyUseRF > 0) {
       setNotification("noPower");
       return;
@@ -380,7 +390,7 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
     if(farmerJoe == null) {
       farmerJoe = new FakeFarmPlayer(MinecraftServer.getServer().worldServerForDimension(worldObj.provider.dimensionId));
     }
-    
+
     if(isOpen(bc)) {
       FarmersCommune.instance.prepareBlock(this, bc, block, meta);
       block = worldObj.getBlock(bc.x, bc.y, bc.z);
@@ -390,7 +400,7 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
       setNotification("outputFull");
       return;
     }
-    
+
     if(!hasPower() && Config.farmActionEnergyUseRF > 0 && Config.farmAxeActionEnergyUseRF > 0) {
       setNotification("noPower");
       return;
@@ -413,7 +423,6 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
         }
       }
     }
-    return;
   }
 
   private boolean isOutputFull() {
@@ -429,10 +438,13 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
   public boolean hasSeed(ItemStack seeds, BlockCoord bc) {
     int slot = getSupplySlotForCoord(bc);
     ItemStack inv = inventory[slot];
-    if(inv != null && (inv.stackSize > 1 || !isSlotLocked(slot)) && inv.isItemEqual(seeds)) {
-      return true;
-    }
-    return false;
+    return inv != null && (inv.stackSize > 1 || !isSlotLocked(slot)) && inv.isItemEqual(seeds);
+  }
+
+  public boolean needSeeds(BlockCoord bc) {
+    int slot = getSupplySlotForCoord(bc);
+    ItemStack inv = inventory[slot];
+    return (inv == null || (inv.stackSize == 1 && isSlotLocked(slot)));
   }
 
   public ItemStack takeSeedFromSupplies(ItemStack stack, BlockCoord forBlock) {
@@ -450,10 +462,10 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
         if (inv.stackSize <= 1 && isSlotLocked(slot)) {
           return null;
         }
-        
+
         ItemStack result = inv.copy();
         result.stackSize = 1;
-        
+
         inv = inv.copy();
         inv.stackSize--;
         if(inv.stackSize == 0) {
@@ -559,20 +571,16 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
     }
     return new BlockCoord(nextX, lastScanned.y, nextZ);
   }
-  
-  public void toggleLockedState(int buttonID) {
+
+  public void toggleLockedState(int slot) {
     if (worldObj.isRemote) {
-      PacketHandler.INSTANCE.sendToServer(new PacketFarmLockedSlot(this, buttonID));
+      PacketHandler.INSTANCE.sendToServer(new PacketFarmLockedSlot(this, slot));
     }
-    buttonID += minSupSlot;
-    if (lockedSlots.contains(buttonID)) {
-      lockedSlots.remove((Integer) buttonID); // hard cast otherwise it removes by index
-    } else {
-      lockedSlots.add(buttonID);
-    }
+    lockedSlots.flip(slot);
   }
+
   public boolean isSlotLocked(int slot) {
-    return lockedSlots.contains(slot);
+    return lockedSlots.get(slot);
   }
 
   @Override
@@ -600,7 +608,7 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
     super.setCapacitor(capacitorType);
     tier = capacitorType.ordinal();
     currentTask = createTask();
-    
+
     int ppt = getPowerUsePerTick();
     switch (capacitorType.ordinal()) {
     case 1:
@@ -615,7 +623,7 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
     }
     if(getEnergyStored() > getMaxEnergyStored()) {
       setEnergyStored(getMaxEnergyStored());
-    } 
+    }
   }
 
   @Override
@@ -632,11 +640,24 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
   public void readCustomNBT(NBTTagCompound nbtRoot) {
     super.readCustomNBT(nbtRoot);
     currentTask = createTask();
+  }
+
+  @Override
+  public void readCommon(NBTTagCompound nbtRoot) {
+    super.readCommon(nbtRoot);
+    lockedSlots.clear();
     for (int i : nbtRoot.getIntArray("lockedSlots")) {
-      lockedSlots.add(i);
+      lockedSlots.set(i);
+    }
+    int slotLayoutVersion = nbtRoot.getInteger("slotLayoutVersion");
+    if (slotLayoutVersion < 1) {
+      for (int i = 9; i >= 2; i--) {
+        inventory[i+1] = inventory[i];
+      }
+      inventory[2] = null;
     }
   }
-  
+
   IPoweredTask createTask() {
     return new ContinuousTask(getPowerUsePerTick());
   }
@@ -645,11 +666,19 @@ public class TileFarmStation extends AbstractPoweredTaskEntity {
   public void writeCustomNBT(NBTTagCompound nbtRoot) {
     super.writeCustomNBT(nbtRoot);
     nbtRoot.setBoolean("isActive", isActive());
-    int[] locked = new int[lockedSlots.size()];
-    for (int i = 0; i < lockedSlots.size(); i++) {
-      locked[i] = lockedSlots.get(i);
+  }
+
+  @Override
+  public void writeCommon(NBTTagCompound nbtRoot) {
+    super.writeCommon(nbtRoot);
+    if(!lockedSlots.isEmpty()) {
+      int[] locked = new int[lockedSlots.cardinality()];
+      for (int i=0,bit=-1; (bit=lockedSlots.nextSetBit(bit+1)) >= 0; i++) {
+        locked[i] = bit;
+      }
+      nbtRoot.setIntArray("lockedSlots", locked);
     }
-    nbtRoot.setIntArray("lockedSlots", locked);
+    nbtRoot.setInteger("slotLayoutVersion", 1);
   }
 
 }
